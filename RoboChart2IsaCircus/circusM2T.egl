@@ -174,6 +174,9 @@ end
 	var str: String;
 	
 	for(actpara in self.paraList.paras){
+		("line 177, actpara = " + actpara.name).println();
+		
+		("line 177, actpara.circusAction = " + actpara.circusAction).println();
 		str = str + "\"" + actpara.nameWithSig() + " = " + actpara.circusAction.parseAction() + "\"";
 		if(hasMore){
 
@@ -212,40 +215,40 @@ end
 [%operation Z!CircusAction parseAction(){
 	if(self.instanceOf(Z!PrefixingAction)){
 		return self.parsePrefixingAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!InterruptAction)){
 		return self.parseInterruptAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!ExtChoiceAction)){
 		return self.parseExtChoiceAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!CallAction)){
 		return self.parseCallAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!SeqAction)){
 		return self.parseSeqAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!GuardedAction)){
 		return self.parseGuardedAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!SkipAction)){
 		return self.parseSkipAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!HideAction)){
 		return self.parseHideAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!ParamAction)){
 		return self.parseParamAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!ParallelAction)){
 		return self.parseParallelAction();
-	} else
+	} //else
 	if(self.instanceOf(Z!ParallelActionIte)){
 		return self.parseParallelActionIte();
-	} else
+	} //else
 	if(self.instanceOf(Z!InterleaveActionIte)){
 		return self.parseInterleaveActionIte();
-	} else
+	} //else
 	if(self.instanceOf(Z!RenameAction)){
 		return self.parseRenameAction();
 	} 
@@ -280,7 +283,7 @@ end
 }%]
 
 [%operation Z!GuardedAction parseGuardedAction(): String{
-	return  "(" + self.pred.parseMemPred() + " & " + "(" + self.circusAction.parseAction() + ")" + ")";
+	return  "(" + self.pred.parseMemPred() + " \\<^bold>& " + "(" + self.circusAction.parseAction() + ")" + ")";
 	//The type of self.pred is MemPred, so self.pred.parse() points to "operation Z!MemPred parseMemPred()"
 }%]
 
@@ -402,16 +405,16 @@ end
 	if(self.instanceOf(Z!DotField)){
 	
 		if(self.outputField = true){
-			field_str = "!" + self.expr.parseExpr();
+			field_str = "\\<^bold>!" + self.expr.parseExpr();
 			
 		} else
 		if(self.outputField = false){
-			field_str = ".(" + self.expr.parseExpr() + ")";
+			field_str = "\\<^bold>." + self.expr.parseExpr();
 		} 
 	} else
 	
 	if(self.instanceOf(Z!InputField)){
-		field_str = "?(" + self.varialbeName.parse() + ")";
+		field_str = "\\<^bold>?" + self.varialbeName.parse();
 	}
 
 	return field_str;
@@ -734,19 +737,6 @@ end
 }%]
   
  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   
   
   

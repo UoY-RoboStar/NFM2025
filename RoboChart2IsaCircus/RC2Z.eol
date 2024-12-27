@@ -28,7 +28,7 @@ R20
 R25 stm
 R29 stateful
 R31 VarMemory
-R33 sharedVarMemory
+R33 sharedVarMem
 R35 Memory
 R37 sharedMemory(not yet implemented)
 R39/40 Node container
@@ -95,7 +95,8 @@ We will need the usedVariablesModel again and modify it to implement the FQN rep
 
 
 //var pkg =  RC!RCPackage.all().selectOne(p|p.name = "Chemical");
-var pkg =  RC!RCPackage.all().selectOne(p|p.name = "pkg0" or p.name = "Chemical");
+RC!RCPackage.all().println();
+var pkg =  RC!RCPackage.all().selectOne(p|p.name = "pkg0" or p.name = "Chemical"  or p.name != "core");
 pkg.println();
 
 //for(stm in RC!StateMachineDef.all().selectOne(s|s.name = "stm0" or s.name = "GasAnalysis_stm")){
@@ -137,16 +138,17 @@ pkg.println();
 //}
 
 
-for(c in RC!ControllerDef.all().selectOne(c|c.name = "C1")){
+//for(c in RC!ControllerDef.all().selectOne(c|c.name = "C1")){
 //	for(op in c.lOperations){
 //		("line 87, op = " + op).println();
 //		if(op.nodes.size()>0){
 //			createOperationDefAsActionPara(op);
 //		}
 //	}
+//	createControllerAsProcessPara(c);
+//}
 
-	createControllerAsProcessPara(c);
-}
+
 replaceRef();
 
 //To transform RoboChart user defined types
@@ -155,7 +157,12 @@ createTypeDeclPara(pkg);
 
 createFunctionDefsAsAxParas(pkg);
 
+//create termination channel: terminate
+var terminate_chanpara = Sequence{"terminate"}.createChannelPara("terminate_channel");
 
+for(m in RC!RCModule.all()){
+	createModuleAsProcessPara(m);
+}
 /** TEMPORARILY COMMENTTED OUT 
 //To copy the shared vardecls as local vardecls, then replace all the shared with local, then FQN in localdecls
 
@@ -555,26 +562,34 @@ operation createPredList(predSeq: Sequence<Z!Pred>): Z!CPredList{
 
 operation replaceRef(){
 
+	for(pltf in RC!RoboticPlatformRef.all()){
+		var pltf_new = clone(pltf.ref);
+		pltf_new.name = pltf.name + "_refreplace";
+	 		
+	 	module(pltf).nodes.add(pltf_new);
+	}
+	
+
+	for(ctlr in RC!ControllerRef.all()){
+
+		var ctl_new = clone(ctlr.ref);
+		ctl_new.name = ctlr.name + "_refreplace";
+	 		
+	 	module(ctlr).nodes.add(ctl_new);
+//	 	module(ctlr).nodes.remove(ctlr);//THIS is commented out BECAUSE EOL will fail, msg: Unknown reason, for both the cases that taking  EMF model and rct as source model
+//	 	delete ctlr;
+		
+	}
+	
 	for(stmr in RC!StateMachineRef.all()){
 	
 		var stm_new = clone(stmr.ref);
-		stm_new.name = stmr.name;
+		stm_new.name = stmr.name + "_refreplace";
 	 		
 	 	ctl(stmr).machines.add(stm_new);
 //	 	ctl(stmr).machines.remove(stmr);
 //THIS is commented out BECAUSE EOL will fail, msg: Unknown reason
 //	 	delete stmr;
-		
-	}
-
-	for(ctlr in RC!ControllerRef.all()){
-
-		var ctl_new = clone(ctlr.ref);
-		ctl_new.name = ctlr.name;
-	 		
-	 	module(ctlr).nodes.add(ctl_new);
-//	 	module(ctlr).nodes.remove(ctlr);//THIS is commented out BECAUSE EOL will fail, msg: Unknown reason, for both the cases that taking  EMF model and rct as source model
-//	 	delete ctlr;
 		
 	}
 	return RC;
@@ -650,6 +665,8 @@ operation createGenOpApplForFuncDecl(
 		refExpr.exprList.exprs.add(f.type.createTypeExpr());
 	} else if(f.parameters.size()=1){
 		("line 522, function is " + f.name).println();
+		("line 522, f.parameters.at(0).type is " + f.parameters.at(0).type).println();
+		
 		refExpr.exprList.exprs.add(f.parameters.at(0).type.createTypeExpr());
 		refExpr.exprList.exprs.add(f.type.createTypeExpr());
 	} else if(f.parameters.size()>1){//multiple parameters, means the 1st expr for the parameter types is a Cartesian product expression
@@ -686,12 +703,17 @@ operation createVarDecl(c: RC!Variable):Z!VarDecl{
 	return varDecl;
 }
 
-
-
-
 //CSP Rule 1 
 operation createModuleAsProcessPara(m: RC!RCModule): Z!ProcessPara{
-	var ctrls = m.controllers.asSequence();
+
+	//declare channels for module m
+	("line 703, m.type = " + m.type()).println();
+	m.createchanParaModule();
+	"line 703".println();
+	
+	var ctrls = m.nodes.select(n|n.instanceOf(RC!ControllerDef)).asSequence();
+	//here has to be RC!ControllerDef instead of RC!Controller, the latter includes ControllerRef
+	
 	var cons = m.connections;
 	
 	var roboticPlatform = m.nodes.selectOne(n|n.instanceOf(RC!RoboticPlatform));
@@ -707,7 +729,7 @@ operation createModuleAsProcessPara(m: RC!RCModule): Z!ProcessPara{
 	//to create processpara for composeControllers(m,ctrls,cons),so that it can be called
 	var composeControllersPara = composeControllers(m,ctrls,cons).createProcessPara("composeControllers_" + m.FQN(), false);
 	
-		
+	
 	
 	//step1: paralleled buffers
 	//Manual modifiey: [| terminate |] c: asyncs . buffer(c)
@@ -717,13 +739,31 @@ operation createModuleAsProcessPara(m: RC!RCModule): Z!ProcessPara{
 	for(c in asyncs){
 		bufferSet.add(buffer(c).name.word.createCallProcess());
 	}
-	var proc1 = createParallelProcessFromProcSet(Set{"terminate"},
-											 bufferSet);
-	// terminate is added to deal with EXCEPTION operator issue
+	("asyncs.size = " +asyncs.size()).println();
+	
+	var proc1;
+	if(asyncs.size()>1){
+		proc1 = createParallelProcessFromProcSet(Set{"terminate"},
+												 bufferSet);
+		// terminate is added to deal with EXCEPTION operator issue
+	} else if(asyncs.size()=1){
+		"line 739".println();
+		proc1 = buffer(asyncs.at(0)).name.word.createCallProcess();
+	} else if(asyncs.size()=0){
+		"line 741".println();
+	//TO DO
+	//is this case possible? YES
+	("proc1 is defined? " + proc1.isDefined()).println();
+		delete proc1;
+		("proc1 is defined? " + proc1.isDefined()).println();
+	}
+	
+
 	
 	//step 2: parallel
 	//Manual: modMemory(m) |[memoryChannels1(m)]| composeControllers(m,ctrls,cons)
 	var memoryChannels = memoryChannels(m);
+		"line 753".println();
 	memoryChannels.add("terminate");
 	//this terminate is added to deal with the EXCEPTION operator issue
 	var proc2 = createParallelProcess(memoryChannels(m), 
@@ -733,9 +773,15 @@ operation createModuleAsProcessPara(m: RC!RCModule): Z!ProcessPara{
 	
 	//step 3: parallel
 	//Manual: proc1 [|evasyncs union {terminate}|]  proc2
-	var proc = createParallelProcess(evasyncs.
+	var proc;
+	if(asyncs.size()>0){
+		proc = createParallelProcess(evasyncs.
 									 proc1,
 									 proc2);
+	} else{
+		proc = proc2;
+	}
+	
 	
 	//step 4: hide
 	var hiddenModuleChannels = hiddenModuleChannels(m);
@@ -772,6 +818,117 @@ operation Set<Z!CircusProcess> createInterleaveProcess(): Z!CircusProcess{
 }
 
 
+
+//channel decleration and channelset declaration for module
+operation RC!RCModule createchanParaModule()  {
+	
+	var roboticPlatform = self.nodes.selectOne(n|n.instanceOf(RC!RoboticPlatform));
+	
+	//CASE 1. declaring robotic platform events as channels
+	//e.g., CSPM: channel p1
+	
+	var pltf_evts_chanpara = createChannelPara("event_channel_pltf_" + self.FQN());
+	
+	var pltf_events = roboticPlatform.events;
+		
+	for(e in pltf_events){
+				
+		var evt_seq = Sequence{e.name + "_in", //CSPM InOut enumtype is removed for Circus, so becomes 2 channels
+							   e.name + "_out"};
+									   
+		if(e.type=null){
+			pltf_evts_chanpara.declList.decls.add(evt_seq.createChannelDecl());	
+		}else{
+			("line 833, e = " + e).println();
+			("line 833, e.type = " + e.type).println();
+			var type_expr = e.type.createTypeExpr();
+			pltf_evts_chanpara.declList.decls.add(evt_seq.createChannelDecl(type_expr));
+		}
+	}
+	
+
+	
+	//CASE 2. Declaring call events for undefined operations provided by the platform as channels
+	//e.g., CSPM: channel channel move2Call: core_real.core_int
+	//			  channel move4Call
+	
+	if(roboticPlatform.hasProvidedOps()){//TBC with Pedro: is hasRequiredOps enough?
+		var undefined_ops_chanpara = createChannelPara("undefined_op_channel_pltf_" + self.FQN());
+		for(pi in roboticPlatform.pInterfaces){
+			for(op in pi.operations){
+				var op_seq = Sequence{op.name + "Call"};
+				var size = op.parameters.size();
+				if(size = 0){
+	
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl());	
+	
+				} else if(size = 1){
+										
+					var type_expr = op.parameters.at(0).type.createTypeExpr();
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl(type_expr));
+					
+				} else if(op.parameters.size()>1){
+					
+					var prodExpr = createProdExpr(op.parameters.at(0).type.createTypeExpr(), op.parameters.at(1).type.createTypeExpr());
+					var i = 2;
+					if(size > 2){
+						while(i<size){
+							prodExpr = createProdExpr(prodExpr,op.parameters.at(i).type.createTypeExpr());
+							i++;
+						}
+					}		
+				
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl(prodExpr));
+				}
+			}
+		}
+	}
+	
+	//CASE 3. variable channels, each var has a channel declaration, as vars can have different types, while the channels in the chandecl.list should have the same type.
+	
+	
+	var var_chanpara = createChannelPara("var_channels_pltf_" + self.FQN());
+	
+	//Case 3.1:  variable channels for Variables  declared directly in the platform
+	for(vl in roboticPlatform.variableList){
+		if(vl.modifier = RC!VariableModifier#VAR){
+//			var i=0;
+			for(v in vl.vars){
+				
+				var type_expr = v.type.createTypeExpr();
+				
+				var var_seq = Sequence{"get_" + v.name , 
+									   "set_" + v.name };
+									   
+				var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+				
+			}
+		}
+	}
+	
+	//Case 3.2: variable channels forvars declared in the  interfaces provided by platform
+	for(provided_interface in roboticPlatform.pInterfaces){
+		for(vl in provided_interface.variableList){
+			if(vl.modifier = RC!VariableModifier#VAR){
+				for(v in vl.vars){
+					
+					var type_expr = v.type.createTypeExpr();
+					
+					var var_seq = Sequence{"get_" + v.name , 
+										   "set_" + v.name };
+										   
+					var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+					
+				}
+			}
+		}
+	}
+	
+	
+}
+
+
+
 operation Set<Z!CircusAction> createInterleaveAction(): Z!CircusAction{
 	var action;
 	var size = self.size();
@@ -788,13 +945,6 @@ operation Set<Z!CircusAction> createInterleaveAction(): Z!CircusAction{
 	return action;
 }
 
-//TO DO
-operation createExceptionAction(cs: Set<String>,
-								act1: Z!CircusAction,
-								act2: Z!CircusAction):
-								Z!CircusAction{
-								
-}
 
 
 //CSP Rule 2, the return type is different from the manual (Z!ChannelSet)
@@ -821,22 +971,26 @@ operation memoryChannels(m: RC!RCModule): Set<String>{
 	var channelSet = new Set<String>;
 	
 	var rp = m.nodes.selectOne(n|n.instanceOf(RC!RoboticPlatformDef));
-	
+	("line 961").println();
 	for(v in allVariables(rp)){
 		channelSet.add("set_" + v.name);
-	}
+	}("line 964").println();
 	for(v in allConstants(rp)){
 		channelSet.add("set_" + v.name);
-	}
-	for(c in m.controllers){
+	}("line 967").println();
+	for(c in m.nodes.select(n|n.instanceOf(RC!Controller))){
+		("line 969").println();
 		for(v in requiredVariables(c)){
-			channelSet.add("set_EXT_" + v.name + "_" + c.FQN()); 
+		("line 971").println();
+			channelSet.add("set_EXT_" + v.name); 
+			
+//			channelSet.add("set_EXT_" + v.name + "_" + c.FQN()); 
 			//Noted: vid(v,c)
-			//TBC: here v.name should be the simple one, not the FQN
+			//TBC: here v.name should be the simple one, not the FQN, WHY?
 		}
 	}
 	
-	channelSet = channelSet.includingAll(memoryChannels(m));
+//	channelSet = channelSet.includingAll(memoryChannels(m));
 
 	return channelSet;
 }
@@ -979,7 +1133,7 @@ operation requiredOperations(c: RC!Context): Set<RC!Operation>{
 
 //Rule 12, Memory in the manual is factored out as a function "mod_memory"
 operation modMemory(m: RC!RCModule): Z!ProcessPara{
-	var rp = m.nodes.select(n|n.instanceOf(RC!RoboticPlatform));
+	var rp = m.nodes.selectOne(n|n.instanceOf(RC!RoboticPlatform));//module must have exactly one platform
 	var ctrls = m.nodes.select(n|n.instanceOf(RC!Controller));
 	var lvars = allLocalVariables(rp).asSequence();
 
@@ -1011,6 +1165,7 @@ operation mod_memory(
 	*******************************************************/
 	
 	//1.1 (; c : rcontrollers(v) . set_EXT_vid(v,c)! x -> Skip))
+	var modMemory;
 	if(lvars.size>0){
 		var actionSeq_lvars = new Sequence<Z!CircusAction>;
 		
@@ -1085,7 +1240,7 @@ operation mod_memory(
 		
 		
 		//1.3 extchoices among all the actions in actionSeq_lvars
-		var modMemory;
+		
 		if(lvars.size()>1){
 			modMemory = actionSeq_lvars.createSequenceAsExtchoiceAction();
 		} else {//lvars.size()=1
@@ -1093,7 +1248,9 @@ operation mod_memory(
 		}
 	}
 	
-	
+	("line 1237, lvars.size = " + lvars.size()).println();
+//	("line 1237, actionSeq_lvars = " + actionSeq_lvars).println();
+	("line 1237, modMemory = " + modMemory).println();
 	
 	/******************************************************
 	Step 2: external choices with end -> Skip
@@ -1127,7 +1284,7 @@ operation mod_memory(
 //		value.name = v.name;
 //		value.type = clone(v.type);
 //		action.declList.decls.add(createVarDecl(value));
-		action.declList.decls.add(createVarDecl(v));
+		paramaction.declList.decls.add(createVarDecl(v));
 	}
 	//e.g., Memory(id__, 0, 0, 0, (0,0), 0, const_pkg0_M_C1_c2, const_pkg0_M_C1_c3)
 	
@@ -1217,14 +1374,14 @@ operation renamingController(m: RC!RCModule,
 	
 	var toPlatform = new Set<RC!Connection>;
 	for(con in RC!Connection.all()){
-		if(con.from = c and RC!Platform.all().includes(con.to)){  //TBC: RC!Platform.all() is the right scope??
+		if(con.from = c and RC!RoboticPlatformDef.all().includes(con.to)){  //TBC: RC!RoboticPlatformDef.all() is the right scope??
 			toPlatform.add(con);
 		}
 	}
 	
 	var fromPlatform = new Set<RC!Connection>;
 	for(con in RC!Connection.all()){
-		if(con.to = c and RC!Platform.all().includes(con.from)){ //TBC: RC!Platform.all() is the right scope??
+		if(con.to = c and RC!RoboticPlatformDef.all().includes(con.from)){ //TBC: RC!RoboticPlatformDef.all() is the right scope??
 			fromPlatform.add(con);
 		}
 	}
@@ -1257,12 +1414,12 @@ operation renamingController(m: RC!RCModule,
 		 renamepairR.add("set_" + v.name + "_" + m.FQN()); //TBC,vid(v,c):  v.name should be the simple name so that can be followed by m.FQN()s
 	}	
 	
-	var proc = createControllerAsProcessPara(c).name.word.createCallProcess().createRenameAction(renamepairL, renamepairR);
+	var proc = createControllerAsProcessPara(c).name.word.createCallProcess().createRenameProcess(renamepairL, renamepairR);
 	
 	return proc;
 }
 
-//Rule 16, the return type is different from the manual (Z!ChannelSet)
+//Rule 16, renaming control events. the return type is different from the manual (Z!ChannelSet)
 operation renCtrlEvts(m: RC!RCModule,
 					  c: RC!Controller,
 					  cons: Set<RC!Connection>): 
@@ -1281,7 +1438,8 @@ operation renCtrlEvts(m: RC!RCModule,
 	}				 
 	
 	cs.add("terminate");
-	
+	("line 1432, c.isTypeOf(RC!Context) is " + c.isTypeOf(RC!Context)).println();
+	("line 1433, c.type() = " + c.type()  ).println();
 	for(v in requiredConstants(c)){
 		 cs.add("set_" + v.name + "_" + m.FQN());//TBC,vid(v,c):  v.name should be the simple name so that can be followed by m.FQN()s
 	}
@@ -1486,6 +1644,11 @@ operation Buffer_false(c: RC!Connection): Z!CircueProcess{
 
 //Rule 19
 operation createControllerAsProcessPara(c: RC!ControllerDef): Z!ProcessPara{
+
+	//declare channels for controller c
+	c.createchanParaCtrl();
+	
+	
 	var actionParaSeq = new Sequence<Z!ActionPara>;
 	
 	//to create operation sematics for defined ops
@@ -1605,7 +1768,156 @@ operation createControllerAsProcessPara(c: RC!ControllerDef): Z!ProcessPara{
 }
 
 
+/* Channels need to be declared for the following:
+1.Vars channel:
+- vars declared directly in the controller
+- vars declared in the defined interfaces
+2. Shared variable channels: set_EXT_
+3. Declaring controller events as channels: 
+- all the events that are declared in the defined interfaces, and 
+- All events declared in the controller
+4. Declaring call events for undefined operations as channels
+*/
+//channel decleration and channelset declaration for Controller
+operation RC!Controller createchanParaCtrl()  {
+	
 
+	//CASE 1. variable channels, each var has a channel declaration, as vars can have different types, while the channels in the chandecl.list should have the same type.
+	
+	
+	var var_chanpara = createChannelPara("var_channels_ctrl_" + self.FQN());
+	
+	//Case 1.1: variable channels for vars declared directly in the controller
+	for(vl in self.variableList){
+		if(vl.modifier = RC!VariableModifier#VAR){
+//			var i=0;
+			for(v in vl.vars){
+				
+				var type_expr = v.type.createTypeExpr();
+				
+				var var_seq = Sequence{"get_" + v.name , 
+									   "set_" + v.name };
+									   
+				var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+				
+			}
+		}
+	}
+	
+	//Case 1.2: variable channels for vars declared in the defined interfaces
+	for(defined_interface in self.interfaces){
+		for(vl in defined_interface.variableList){
+			if(vl.modifier = RC!VariableModifier#VAR){
+				for(v in vl.vars){
+					
+					var type_expr = v.type.createTypeExpr();
+					
+					var var_seq = Sequence{"get_" + v.name , 
+										   "set_" + v.name };
+										   
+					var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+					
+				}
+			}
+		}
+	}
+	
+	//CASE 2. Shared variable channels: set_EXT_
+	if(self.hasSharedVars()){//i.e., has requied interface which contains variables
+		var shared_var_chanpara = createChannelPara("shared_var_channel_ctrl_" + self.FQN());
+		for(ri in self.rInterfaces){
+			for(vl in ri.variableList.select(l|l.modifier = VariableModifier#VAR)){
+				for(v in vl.vars){
+					
+					var type_expr = v.type.createTypeExpr();
+					
+					var var_seq = Sequence{"set_EXT_" + v.name};
+					//TBC with Pedro: v to be FQN at which level? stm or ctrl or pkg?
+					
+					shared_var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+				}
+			}
+		}
+	}
+	
+
+	//CASE 3. Declaring controller events as channels
+
+	var evt_chanpara = createChannelPara("event_channel_ctrl_" + self.FQN());
+	
+	//to create the type for the controller event channels (external), 
+	//e.g., CSPM: channel turn: InOut.Chemical_Angle
+	
+	//3.1 to collect all the events declared in the controller
+	var ctrl_events = self.events;
+	
+	//3.2 to collect all the events that are defined in the defined interfaces
+	for(defined_interface in self.interfaces){
+		ctrl_events = ctrl_events.includingAll(defined_interface.events);
+	}
+	
+	for(e in ctrl_events){
+				
+		var evt_seq = Sequence{e.name + "_in", //CSPM InOut enumtype is removed for Circus, so becomes 2 channels
+							   e.name + "_out"};
+									   
+		if(e.type=null){
+			evt_chanpara.declList.decls.add(evt_seq.createChannelDecl());	
+		}else{
+			var type_expr = e.type.createTypeExpr();
+			evt_chanpara.declList.decls.add(evt_seq.createChannelDecl(type_expr));
+		}
+	}
+	
+
+	
+	//CASE 4. Declaring call events for undefined operations as channels
+	
+	if(self.hasRequiredOps()){//TBC with Pedro: is hasRequiredOps enough?
+		var undefined_ops_chanpara = createChannelPara("undefined_op_channel_ctrl_" + self.FQN());
+		for(ri in self.rInterfaces){
+			for(op in ri.operations){
+				var op_seq = Sequence{op.name + "Call"};
+				var size = op.parameters.size();
+				if(size = 0){
+	
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl());	
+	
+				} else if(size = 1){
+										
+					var type_expr = op.parameters.at(0).type.createTypeExpr();
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl(type_expr));
+					
+				} else if(op.parameters.size()>1){
+					
+					var prodExpr = createProdExpr(op.parameters.at(0).type.createTypeExpr(), op.parameters.at(1).type.createTypeExpr());
+					var i = 2;
+					if(size > 2){
+						while(i<size){
+							prodExpr = createProdExpr(prodExpr,op.parameters.at(i).type.createTypeExpr());
+							i++;
+						}
+					}		
+				
+					undefined_ops_chanpara.declList.decls.add(op_seq.createChannelDecl(prodExpr));
+				}
+			}
+		}
+	}
+	
+	
+	
+	
+	
+	
+	//KEEP IT FOR NOW, but not used
+	//shared_variable_events
+	var shared_var_events_channelset = createChannelSet(createBasicChannelSetExpr(sharedVarSet(self)));
+	var shared_variable_events_channelsetPara = shared_var_events_channelset.createChanSetPara("shared_variable_events_ctrl_"+self.FQN());
+	
+	
+	
+}
 
 //Rule 20, Memory in the manual is factored out as a function "ctrl_memory"
 operation crtlMemory(c: RC!ControllerDef): Z!ActionPara{
@@ -1899,7 +2211,7 @@ operation composeMachines(c: RC!Controller,
 		}
 		var connevts = intersect(renStmEvts(c,ms.at(0),cons), renStmEvts_tail);
 		
-		var action = createParallelAction(connevts.including(terminate), renamingMachine(c,ms.at(0),cons), composeMachines(c,tail_ms,cons));//TO DO, nops should be incorporated.	
+		var action = createParallelAction(connevts.including("terminate"), renamingMachine(c,ms.at(0),cons), composeMachines(c,tail_ms,cons));//TO DO, nops should be incorporated.	
 //		connevts.including(terminate) = connevts union {terminate}. terminate is added to slove the issue with exception operator
 		
 		return action;
@@ -2935,14 +3247,19 @@ operation RC!ControllerDef FQN(): String{
 	//Case 1: the controller is contained in a module
 	for(md in RC!RCModule.all()){
 		if(md.nodes.includes(self)){
+		"line 3218".println();
+		("self.name = " + self.name).println();
+		("md.name = " + md.name).println();
+		("md.fqn = " + md.FQN() ).println();
 			return self.name + "_" + md.FQN();
 		}
 	}
 	
 	//Case 2: the controller is contained in a package
-	for(pkg in RC!RCPackage.all()){
+	for(pkg in RC!RCPackage.all().select(p|p.name != "core")){
 		if(pkg.controllers.includes(self)){
 			if(pkg.name.isDefined()){
+		"line 3227".println();
 				return self.name + "_" + pkg.name;			
 			}else{
 				return self.name;	
@@ -2968,10 +3285,16 @@ operation RC!Interface FQN(): String{
 
 // Fully Qualified Name for RCModule
 operation RC!RCModule FQN(): String{
-
+//	("LINE 3251, RC!RCPackage.all() = " + RC!RCPackage.all()).println();
+	var pkgs = RC!RCPackage.all().select(p|p.name != "core");
 	//Case 1: the module is contained in a package
-	for(pkg in RC!RCPackage.all()){
+//	("module.name = " + self.name).println();
+//	("pkgs = " + pkgs).println();
+//	("(pkgs.at(0).modules.includes(self)) = " + (pkgs.at(0).modules.includes(self))).println();
+//	("(pkgs.at(0).name.isDefined()) = " + (pkgs.at(0).name.isDefined())).println();
+	for(pkg in pkgs){
 		if(pkg.modules.includes(self)){
+		
 			if(pkg.name.isDefined()){
 				return self.name + "_" + pkg.name;			
 			}else{
@@ -3003,7 +3326,7 @@ operation RC!NodeContainer createchanParaNC()  {
 	var NIDS_para = NIDS.createEnumTypePara();
 	
 	//CSPM: channel internal__:NIDS
-	var internal_chanpara = Sequence{"internal__"+self.FQN()}.createChannelPara("internal_channel_" + self.FQN(), NIDS.name.word);
+	var internal_chanpara = Sequence{"internal__"+self.FQN()}.createChannelPara("internal_channel_stmbd_" + self.FQN(), NIDS.name.word);
 	
 //	for(n in self.nodes){
 //		node_seq.add("internal__NID_" + n.FQN());
@@ -3014,13 +3337,15 @@ operation RC!NodeContainer createchanParaNC()  {
 
 	
 	//2. Flow channel: interrupt, exited, exit, terminate
-	var flow_chanpara = Sequence{"interrupt_"+self.FQN(), "exited_"+self.FQN(), "exit_"+self.FQN(), "terminate"}.createChannelPara("flowchannel_" + self.FQN());
+	var flow_chanpara = Sequence{"interrupt_"+self.FQN(), "exited_"+self.FQN(), "exit_"+self.FQN()//, "terminate"
+	}.createChannelPara("flowchannel_stmbd_" + self.FQN());
 
 
 
 	//3. variable channels, each var has a channel declaration, as vars can have different types, while the channels in the chandecl.list should have the same type.
 	
-	var var_chanpara = createChannelPara("variable_channel_" + self.FQN());
+	var var_chanpara = createChannelPara("var_channel_stmbd_" + self.FQN());
+	//Case 1: vars declared in the stm directly
 	for(vl in self.variableList){
 		if(vl.modifier = RC!VariableModifier#VAR){
 //			var i=0;
@@ -3045,10 +3370,29 @@ operation RC!NodeContainer createchanParaNC()  {
 		}
 	}
 	
+	//Case 2: vars declared in the defined interfaces
+	for(defined_interface in self.interfaces){
+		for(vl in defined_interface.variableList){
+			if(vl.modifier = RC!VariableModifier#VAR){
+				for(v in vl.vars){
+					
+					var type_expr = v.type.createTypeExpr();
+					
+					var var_seq = Sequence{"get_" + v.name , 
+										   "set_" + v.name , 
+										   "setL_" + v.name , 
+										   "setR_" + v.name };
+										   
+					var_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+					
+				}
+			}
+		}
+	}
 	
 	//4. Shared variable channels
 	if(self.hasSharedVars()){//i.e., has requied interface which contains variables
-		var shared_var_chanpara = createChannelPara("shared_var_channel_" + self.FQN());
+		var shared_var_chanpara = createChannelPara("shared_var_channel_stmbd_" + self.FQN());
 		for(ri in self.rInterfaces){
 			for(vl in ri.variableList.select(l|l.modifier = VariableModifier#VAR)){
 				for(v in vl.vars){
@@ -3067,19 +3411,58 @@ operation RC!NodeContainer createchanParaNC()  {
 	
 		
 	
-	
+	//the below is commented out because these channels will not be used
 	//5. Local variable channels for defined operations that are required by the state machine
-	//TO DO
+	/*by defined, it means that the op is defined in the CONTROLLER 
+	and required by stm throug a Interface which contains the op	??
+	if the op is defined outside the module (module can not have an op, 
+	so outside controller means outside module),
+	then op should be provided by the platform, and required by controller and by the stm
+	but this kind of op does not fall into this category
+
+	If generation for a stm, no channels created as no context of controller is considered
 	
+	
+	if(self.hasDefinedOpReqByStm()){
+		var var_in_definedOpReqByStmbd_chanpara = createChannelPara("var_in_definedOpReqByStmbd_chan_" + self.FQN());
+		var op_seq = self.definedOps_reqByStm();
+		for(op in op_seq){
+		
+			for(vl in op.variableList){
+				if(vl.modifier = RC!VariableModifier#VAR){
+					for(v in vl.vars){
+						
+						var type_expr = v.type.createTypeExpr();
+						
+						var var_seq = Sequence{"get_" + op.FQN() + "_" + v.name, 
+										       "set_" + op.FQN() + "_" + v.name};
+											   
+						var_in_definedOpReqByStmbd_chanpara.declList.decls.add(var_seq.createChannelDecl(type_expr));
+						
+					}
+				}
+			}
+			
+		}
+	}
+	*/
 	
 	//6. Declaring state machine events as channels
 
-	var evt_chanpara = createChannelPara("event_channel_" + self.FQN());
+	var evt_chanpara = createChannelPara("event_channel_stmbd_" + self.FQN());
 	
 	//Case 1: to create the type for the state machine event channels (external), 
-	//e.g., CSPM: trigger1:InOut.core_int;   NIDS is not involved.
+	//e.g., CSPM: trigger1:InOut.core_int;   the state nodes id NIDS is not involved.
 	//Circus: trigger1_in ::int, trigger1_out ::int
-	for(e in self.events){
+	
+	var stm_events = self.events;
+	//to collect all the events that are defined in the defined interfaces
+	for(defined_interface in self.interfaces){
+		stm_events = stm_events.includingAll(defined_interface.events);
+	}
+	
+	
+	for(e in stm_events){
 				
 //		var evt_seq = Sequence{e.FQN() + "_in", //CSPM InOut enumtype is removed for Circus, so becomes 2 channels
 //							   e.FQN() + "_out"};
@@ -3098,7 +3481,7 @@ operation RC!NodeContainer createchanParaNC()  {
 	//Case 2: to generate channels for the events to be used as transition triggers
 	//e.g., CSPM: trigger1__:NIDS.InOut.core_int
 	//Circus: trigger1_stm0_pkg0__in :: NIDS x int
-	for(e in self.events){
+	for(e in stm_events){
 //		var evt_seq = Sequence{e.FQN() + "__in"//,
 //							 //e.FQN() + "__out" , this is removed because the out channel is not necessary, as e.NIDS channel is only used for transition triggers, and a trigger can only be an input.
 //							   };	
@@ -3122,7 +3505,7 @@ operation RC!NodeContainer createchanParaNC()  {
 	//7. Declaring call and ret events for undefined operations as channels
 	
 	if(self.hasRequiredOps()){//TBC with Pedro: is hasRequiredOps enough?
-		var undefined_ops_chanpara = createChannelPara("undefined_op_channel_" + self.FQN());
+		var undefined_ops_chanpara = createChannelPara("undefined_op_channel_stmbd_" + self.FQN());
 		for(ri in self.rInterfaces){
 			for(op in ri.operations){
 				var op_seq = Sequence{op.name + "Call"};
@@ -3159,13 +3542,13 @@ operation RC!NodeContainer createchanParaNC()  {
 	for(n in self.nodes){
 		if(n.instanceOf(RC!Junction)){
 			var junc_chan = Sequence{"enter_"+ n.FQN(),
-									 "interrupt_"+ n.FQN()}.createChannelPara("junction_channel_" + n.FQN());
+									 "interrupt_"+ n.FQN()}.createChannelPara("junction_channel_in_stmbd_" + n.FQN());
 		} else{
 			var st_chan = Sequence{"enter_"+ n.FQN(),
 								   "entered_"+ n.FQN(),
 								   "interrupt_"+ n.FQN(),
 								   "enteredL_"+ n.FQN(),
-								   "enteredR_"+ n.FQN()}.createChannelPara("state_channel_" + n.FQN());
+								   "enteredR_"+ n.FQN()}.createChannelPara("state_channel_in_stmbd_" + n.FQN());
 		}
 	}
 	
@@ -3174,22 +3557,22 @@ operation RC!NodeContainer createchanParaNC()  {
 	
 	//enterSS
 	var enterSSchannelset = createChannelSet(createBasicChannelSetExpr(enterSS(self)));
-	var enterSSchannelsetPara = enterSSchannelset.createChanSetPara("enterSS_"+self.FQN());
+	var enterSSchannelsetPara = enterSSchannelset.createChanSetPara("enterSS_in_stmbd_"+self.FQN());
 	
 	//enteredSS
 	var enteredSSchannelset = createChannelSet(createBasicChannelSetExpr(enteredSS(self)));
-	var enteredSSchannelsetPara = enteredSSchannelset.createChanSetPara("enteredSS_"+self.FQN());
+	var enteredSSchannelsetPara = enteredSSchannelset.createChanSetPara("enteredSS_in_stmbd_"+self.FQN());
 	
 	
 	//internal_events
 	var internal_stringset = enterSS(self).includingAll(enteredSS(self)).includingAll(Sequence{"interrupt_"+self.FQN(), "exited_"+self.FQN()});
 	var internal_events_channelset = createChannelSet(createBasicChannelSetExpr(internal_stringset));
-	var internal_events_channelsetPara = internal_events_channelset.createChanSetPara("internal_events_"+self.FQN());
+	var internal_events_channelsetPara = internal_events_channelset.createChanSetPara("internal_events_in_stmbd_"+self.FQN());
 	
 	
 	//shared_variable_events
 	var shared_var_events_channelset = createChannelSet(createBasicChannelSetExpr(sharedVarSet(self)));
-	var shared_variable_events_channelsetPara = shared_var_events_channelset.createChanSetPara("shared_variable_events_"+self.FQN());
+	var shared_variable_events_channelsetPara = shared_var_events_channelset.createChanSetPara("shared_variable_events_in_stmbd_"+self.FQN());
 	
 	
 	//sem__events
@@ -3213,11 +3596,101 @@ operation RC!NodeContainer createchanParaNC()  {
 	}	
 	
 	var sem__events_channelset = createChannelSet(createBasicChannelSetExpr(sem__events_stringset));
-	var sem__events_channelsetPara = sem__events_channelset.createChanSetPara("sem__events_"+self.FQN());
+	var sem__events_channelsetPara = sem__events_channelset.createChanSetPara("sem__events_stm_"+self.FQN());
 	
 	//10. Declaring State Local channelsets: enterSS_s0, enteredSS_s0, etc
 	//shall these local ones be declared in state semantics?
 	
+}
+
+
+operation RC!StateMachineBody hasDefinedOpReqByStm(): Boolean{
+	for(i in self.rInterfaces){
+		for(op in i.operations){
+			("line 3545 " + i.operations).println();
+//			for(opdef in RC!OperationDef.all()){
+				
+				
+					for(ctrl in RC!ControllerDef.all().selectOne(c|c.machines.includes(self))){
+						("ctrl.name = " + ctrl.name).println();
+						("ctrl.lOperations = " + ctrl.lOperations).println();
+						
+						("ctrl.lOperations.at(0).type() = " + ctrl.lOperations.at(0).type()).println();
+						("op.type = " + op.type()).println();
+					
+						for(opdef in ctrl.lOperations.select(o |    o.instanceOf(RC!OperationDef) 
+																and o.name = op.name 
+																and o.parameters.size() = op.parameters.size())){
+							var i=0;
+							while(i< opdef.parameters.size()){
+								if(opdef.parameters.at(i).name = op.parameters.at(i).name and opdef.parameters.at(i).type() = op.parameters.at(i).type()){
+									i++;
+								} else{
+									break;
+								}
+							}
+							if(i=opdef.parameters.size()){
+								"true".println();
+								return true;
+							}
+						}
+						
+					}
+				
+			
+		}
+	}
+	return false;
+}
+
+
+operation RC!StateMachineBody definedOps_reqByStm(): Sequence<RC!OperationDef>{
+	var op_seq = new Sequence<RC!OperationDef>;
+	for(i in self.rInterfaces){
+		for(op in i.operations){				
+				
+			for(ctrl in RC!ControllerDef.all().selectOne(c|c.machines.includes(self))){
+						
+				for(opdef in ctrl.lOperations.select(o |    o.instanceOf(RC!OperationDef) 
+															and o.name = op.name 
+															and o.parameters.size() = op.parameters.size())){
+					var i=0;
+					while(i< opdef.parameters.size()){
+						if(opdef.parameters.at(i).name = op.parameters.at(i).name and opdef.parameters.at(i).type() = op.parameters.at(i).type()){
+							i++;
+						} else{
+							break;
+						}
+					}
+					if(i=opdef.parameters.size()){
+						op_seq.add(opdef);
+					}
+				}
+			}
+		}
+	}
+	return op_seq;
+}
+
+
+operation RC!RoboticPlatform hasProvidedOps():Boolean{
+		
+	for(pi in self.pInterfaces){	
+		if(pi.operations.size()>0){
+			return true;
+		}
+	} 
+	return false;
+}
+
+operation RC!Controller hasRequiredOps():Boolean{
+		
+	for(ri in self.rInterfaces){	
+		if(ri.operations.size()>0){
+			return true;
+		}
+	} 
+	return false;
 }
 
 
@@ -3231,6 +3704,20 @@ operation RC!NodeContainer hasRequiredOps():Boolean{
 	return false;
 }
 
+operation RC!ControllerDef hasSharedVars():Boolean{
+	var hasSharedVars = false;
+	
+	for(ri in self.rInterfaces){
+	
+		for(vl in ri.variableList){
+			if(vl.modifier = VariableModifier#VAR){
+				hasSharedVars = true;
+				return true;
+			} 
+		}
+	} 
+	return false;
+}
 
 operation RC!NodeContainer hasSharedVars():Boolean{
 	var hasSharedVars = false;
@@ -3253,10 +3740,23 @@ operation RC!Type createTypeExpr(): Z!Expr{
 	("line 1249, self = " + self).println();
 	if(self.isTypeOf(ProductType)){
 		return self.createProdExpr();
-	} else  if(self.isTypeOf(TypeRef)){  
+	} 
+	
+	if(self.isTypeOf(TypeRef)){  
+		("line 3727 self.ref = " + self.ref).println();
+		("line 3728 self.ref.type = " + self.ref.type()).println();
+		
 		return self.ref.name.createRefExpr(false, false);
-	} else  if(self.isTypeOf(SeqType)){  
-
+	} 
+	
+	//TO DO
+	if(self.isTypeOf(RelationType)){  
+		
+//		return ??
+	}
+	
+	if(self.isTypeOf(SeqType)){  
+		("line 3734, self.domain = " +self.domain).println();
 //		return createRefExprAsGenOpAppl("seq_",self.domain.name.asString());
 		return createRefExprAsGenOpAppl("seq_",self.domain.createTypeExpr());
 	}
@@ -3306,7 +3806,7 @@ operation createChannelPara(
 
 
 
-//type indicate the type of the channel, or is sync if is untyped
+//'type' indicate the type of the channel, or is sync if is untyped
 operation Sequence<String> createChannelPara(
 	para_name: String,
 	type: String
@@ -3556,7 +4056,7 @@ operation ncCoreBehaviour(nc: RC!NodeContainer): Z!ActionPara{
 	//create transition action: Q
 	var transActionPara = nc.createTransitionsAsActionPara();
 	
-	var initial_name = nc.nodes.selectOne(n|n.instanceOf(Initial)).FQN();
+	var initial_name = nc.nodes.selectOne(n|n.instanceOf(RC!Initial)).FQN();
 
 	var commu = createSynchCommunication("enter_" + initial_name);
 	
@@ -3794,7 +4294,7 @@ operation createMetaParallelAction(
 	It means share becomes three channels
 	Thus, P = share -> P becomes
 	Q = share -> Q or setR_a -> Q or setR_a1 -> Q
-	
+	??
 	***************************************************************************/
 	
 	
@@ -3911,9 +4411,22 @@ operation enteredSS(nc: RC!NodeContainer): Sequence<String>{
 }
 
 
-operation sharedVarSet(nc: RC!NodeContainer): Sequence<String>{
+//operation sharedVarSet(nc: RC!NodeContainer): Sequence<String>{
+//	var seq = new Sequence<String>;
+//	for(ri in nc.rInterfaces){
+//		for(vl in ri.variableList.select(l|l.modifier = VariableModifier#VAR)){
+//			for(v in vl.vars){
+//				seq.add("set_EXT_" + v.name); 
+//			}
+//		}
+//	}
+//	return seq;
+//}
+
+//c can be of type RC!ControllerDef or RC!NodeContainer
+operation sharedVarSet(c: Any): Sequence<String>{
 	var seq = new Sequence<String>;
-	for(ri in nc.rInterfaces){
+	for(ri in c.rInterfaces){
 		for(vl in ri.variableList.select(l|l.modifier = VariableModifier#VAR)){
 			for(v in vl.vars){
 				seq.add("set_EXT_" + v.name); 
@@ -4382,7 +4895,7 @@ operation Z!ZName createCallProcess(): Z!CallProcess{
 
 
 //BasicProcss is formed by a (possibly empty) set of process paragraphs, an optional process state given as a schema and a mandatory main action definition.
-//so isBasicProc = true if it is a BasicProcss
+// isBasicProc = true if it is a BasicProcss
 operation Z!CircusProcess createProcessPara(name: String, isBasicProc: Boolean): Z!ProcessPara{
 	var para = new Z!ProcessPara;
 	para.name = name.createZName();
@@ -4522,6 +5035,8 @@ operation createBasicChannelSetExpr(channel_names:Set<String>): Z!BasicChannelSe
 	expr.communicationList.communications = commuList;
 	return expr;
 }
+
+
 //to create communication of channelset type to be used in the BasicChannelSetExpr
 operation createChannelSetCommunication(
 	channel_name:String
@@ -4705,7 +5220,8 @@ operation RC!Transition createTransitionAsCircusAction(): Z!CircusAction{
 	return circusAction;
 }
 
-
+//to turn the expr of a boolean type into a predicate by "expr = True"
+//"True is a boolean type too"
 //equality is s relation operator application (C.5.12): MemPred
 operation Z!Expr createMemPredEquality(): Z!MemPred{
 	var pred =  new Z!MemPred;
@@ -6307,9 +6823,13 @@ operation Any createApplExpr(operator: String): Z!ApplExpr{
 	var expr = new Z!ApplExpr;
 	expr.mixFix = true; //CZT: C.6.21 (Function Operator Application). For example: S + T.
 	
+	("line 6816, self.left = " + self.left).println();
+	("line 6816, self.right = " + self.right).println();
 	var operand_left = self.left.createExpr();
+	"line 6819".println();
 	var operand_right = self.right.createExpr();
-
+	("line 6820, operand_left = " + operand_left).println();
+	("line 6820, operand_right = " + operand_right).println();
 	expr.leftExpr = operator.createRefExpr(false,false);
 
 	expr.rightExpr = Sequence{operand_left, operand_right}.createTupleExpr();	
@@ -6329,14 +6849,18 @@ operation Any createApplExpr(operator: String): Z!ApplExpr{
 operation RC!CallExp createCallExpr(): Z!ApplExpr{
 	var expr = new Z!ApplExpr;
 	expr.mixFix = false; 
-
+	"line 6842 executed".println();
+	("line 6843, self = " + self).println();
+	("line 6843, self.`function`.type() = " + self.`function`.type()).println();
+	("line 6843, self.`function`.ref = " + self.`function`.ref).println();
+//	("line 6843, self.`function`.ref.name = " + self.`function`.ref.name).println();
 	expr.leftExpr = self.`function`.createExpr();
 	
 	("self.function = " + self.`function`).println();
 	("self.function.type = " + self.`function`.type()).println();
 	
 	("self.function.asString() = " + self.`function`.asString()).println();
-	
+	"line 6849 executed".println();
 	var arg_seq = new Sequence<Z!Expr>;
 	for(arg in self.args){
 		arg_seq.add(arg.createExpr());
@@ -6347,7 +6871,7 @@ operation RC!CallExp createCallExpr(): Z!ApplExpr{
 
 //	expr.exprList = new Z!ZExprList;
 //	expr.exprList.exprs = Sequence{left, right};
-	
+	"line 6860 executed".println();
 	return 	expr;
 }
 
@@ -6567,6 +7091,7 @@ operation RC!Expression createExpr():Z!Expr{
 	} //else
 	
 	if(self.isTypeOf(RC!CallExp)){
+		"line 7080 executed".println();
 		return self.createCallExpr();
 	} //else
 	

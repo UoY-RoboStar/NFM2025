@@ -7,20 +7,20 @@
     <intAttribute key="generateTo" value="1"/>
     <stringAttribute key="implementation_name" value="Sequential EGX"/>
     <listAttribute key="models">
-        <listEntry value="#Fri Dec 27 12:55:59 GMT 2024&#13;&#10;aliases=&#13;&#10;reuseUnmodifiedFileBasedMetamodels=true&#13;&#10;modelFile=/Test1/test1/test1_circus.model&#13;&#10;metamodelUri=http\://www.robocalc.circus/Circus&#13;&#10;concurrent=false&#13;&#10;type=EMF&#13;&#10;readOnLoad=true&#13;&#10;storeOnDisposal=false&#13;&#10;expand=true&#13;&#10;fileBasedMetamodelUri=&#13;&#10;metamodelFile=&#13;&#10;cached=true&#13;&#10;name=Z&#13;&#10;modelUri=platform\:/resource/Test1/test1/test1_circus.model&#13;&#10;isMetamodelFileBased=false&#13;&#10;validate=false"/>
+        <listEntry value="#Fri Dec 27 13:41:43 GMT 2024&#13;&#10;aliases=&#13;&#10;reuseUnmodifiedFileBasedMetamodels=true&#13;&#10;modelFile=/RoboChart2IsaCircus/test1/test1_circus.model&#13;&#10;metamodelUri=http\://www.robocalc.circus/Circus&#13;&#10;concurrent=false&#13;&#10;type=EMF&#13;&#10;readOnLoad=true&#13;&#10;storeOnDisposal=false&#13;&#10;expand=true&#13;&#10;fileBasedMetamodelUri=&#13;&#10;metamodelFile=&#13;&#10;cached=true&#13;&#10;name=Z&#13;&#10;modelUri=platform\:/resource/RoboChart2IsaCircus/test1/test1_circus.model&#13;&#10;isMetamodelFileBased=false&#13;&#10;validate=false"/>
     </listAttribute>
     <listAttribute key="org.eclipse.debug.ui.favoriteGroups">
         <listEntry value="org.eclipse.debug.ui.launchGroup.debug"/>
         <listEntry value="org.eclipse.debug.ui.launchGroup.run"/>
     </listAttribute>
-    <stringAttribute key="outputDirPath" value="/Test1/test1"/>
+    <stringAttribute key="outputDirPath" value="/RoboChart2IsaCircus/test1"/>
     <stringAttribute key="outputFilePath" value=""/>
     <listAttribute key="parameters"/>
     <booleanAttribute key="produceTrace" value="false"/>
     <booleanAttribute key="profile_model_loading" value="false"/>
     <booleanAttribute key="profiling_enabled" value="true"/>
     <booleanAttribute key="reset_profiler" value="false"/>
-    <stringAttribute key="source" value="/Test1/CircusM2T.egx"/>
+    <stringAttribute key="source" value="/RoboChart2IsaCircus/CircusM2T.egx"/>
     <stringAttribute key="templateFactoryType" value="org.eclipse.epsilon.egl.EglFileGeneratingTemplateFactory"/>
     <stringAttribute key="traceDestination" value=""/>
 </launchConfiguration>
