@@ -1,6 +1,6 @@
 # RoboChart to IsaCircus Transformation
 
-## This folder contains the implementation of the transformation from RoboChart to IsaCircus. It has two steps:
+## This project contains the implementation of the transformation from RoboChart to IsaCircus. It has two steps:
 ### RoboChart to Circus by model-to-model transformation
 ### Circus to IsaCircus by model-to-text transformation
 
