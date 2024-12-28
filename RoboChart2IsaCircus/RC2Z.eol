@@ -564,7 +564,7 @@ operation replaceRef(){
 
 	for(pltf in RC!RoboticPlatformRef.all()){
 		var pltf_new = clone(pltf.ref);
-		pltf_new.name = pltf.name + "_refreplace";
+		pltf_new.name = pltf.name;
 	 		
 	 	module(pltf).nodes.add(pltf_new);
 	}
@@ -573,7 +573,7 @@ operation replaceRef(){
 	for(ctlr in RC!ControllerRef.all()){
 
 		var ctl_new = clone(ctlr.ref);
-		ctl_new.name = ctlr.name + "_refreplace";
+		ctl_new.name = ctlr.name;
 	 		
 	 	module(ctlr).nodes.add(ctl_new);
 //	 	module(ctlr).nodes.remove(ctlr);//THIS is commented out BECAUSE EOL will fail, msg: Unknown reason, for both the cases that taking  EMF model and rct as source model
@@ -584,7 +584,7 @@ operation replaceRef(){
 	for(stmr in RC!StateMachineRef.all()){
 	
 		var stm_new = clone(stmr.ref);
-		stm_new.name = stmr.name + "_refreplace";
+		stm_new.name = stmr.name;
 	 		
 	 	ctl(stmr).machines.add(stm_new);
 //	 	ctl(stmr).machines.remove(stmr);
@@ -1705,7 +1705,8 @@ operation createControllerAsProcessPara(c: RC!ControllerDef): Z!ProcessPara{
 	//"terminate" is added to deal with the issue of EXCEPTION operator
 	
 	var cons = c.connections;
-	var ms = c.machines.select(m|m.instanceOf(RC!StateMachineDef)).asSequence();
+	var ms = c.machines.select(m|m.instanceOf(RC!StateMachineDef) and not m.instanceOf(RC!OperationDef)).asSequence();
+	("line 1709 ms = " + ms).println();
 	var composeMachinePara = composeMachines(c,ms,cons).createActionPara("composeMachines_" + c.FQN());
 //	var crtlMemoryPara = crtlMemory(c).createActionPara("crtlMemory_" + c.FQN());
 	
@@ -2372,9 +2373,15 @@ operation getsetChannels(stm: RC!StateMachineDef): Set<String>{
 
 //Rule 27
 operation createOperationDefAsActionPara(op: RC!OperationDef): Z!ActionPara{
-	var action = stateful(op).circusAction.createHideAction(Sequence{"terminate"});
+	var statefulpara = stateful(op);
+	
+//	statefule is an actionpara, the action of this actionpara is assigned to action below
+	var action = statefulpara.circusAction.createHideAction(Sequence{"terminate"});
 	"lin 797".println(); op.eContainer().println();
-	return action.createActionPara("stateful_op_" + op.FQN());
+	
+//	now, stateful only has a name, no action, and it is no more needed, so deleted
+	delete statefulpara;
+	return action.createActionPara("stm_op_" + op.FQN());
 	
 }
 
@@ -2428,9 +2435,9 @@ operation varMemory(stm: RC!Context): Z!ActionPara{
 	
 	//to generate Individual variable memory as ActionPara for each variable in vars
 	for(v in vars){
-		("line 1581, v = " + v + ", type.type.NAME = " + v.type.type.name  + ", v.type.type()" + v.type.type()).println();
+//		("line 1581, v = " + v + ", type.type.NAME = " + v.type.type.name  + ", v.type.type()" + v.type.type()).println();
 		//,  type.ref.name =  + v.type.ref.name
-		Memory(v);
+		Memory(v,stm);
 	}
 	
 	
@@ -2441,7 +2448,7 @@ operation varMemory(stm: RC!Context): Z!ActionPara{
 	
 	else if(vars.size()=1) {
 		
-		var action_name = "Memory_"+ vars.at(0).name;
+		var action_name = "Memory_"+ vars.at(0).name + "_" + stm.FQN();
 		var ParaSeq = Sequence{vars.at(0).getInitialOrDefaultValueAsExpr()};
 		varMemory = action_name.createCallAction(ParaSeq);
 		//By assigning initial or default value as parameter of this CallAction, 
@@ -2450,14 +2457,14 @@ operation varMemory(stm: RC!Context): Z!ActionPara{
 	
 	else if(vars.size()>1){
 		("line 1600, vars = " + vars).println();
-		var action_name0 = "Memory_"+ vars.at(0).name;
+		var action_name0 = "Memory_"+ vars.at(0).name + "_" + stm.FQN();
 		var ParaSeq0 = Sequence{vars.at(0).getInitialOrDefaultValueAsExpr()};	("line 1602, ParaSeq0 = " + ParaSeq0).println();
 		var action0 = action_name0.createCallAction(ParaSeq0);
 		
-		var action_name1 = "Memory_"+ vars.at(1).name;
-		("line 1606, vars.at(1) = " + vars.at(1)).println();
-		("line 1606, vars.at(1).type = " + vars.at(1).type).println();		
-		("line 1606, vars.at(1).type.type() = " + vars.at(1).type.type().name).println();		
+		var action_name1 = "Memory_"+ vars.at(1).name + "_" + stm.FQN();
+//		("line 1606, vars.at(1) = " + vars.at(1)).println();
+//		("line 1606, vars.at(1).type = " + vars.at(1).type).println();		
+//		("line 1606, vars.at(1).type.type() = " + vars.at(1).type.type().name).println();		
 //		("line 1606, vars.at(1).type.ref = " + vars.at(1).type.ref).println();
 		var ParaSeq1 = Sequence{vars.at(1).getInitialOrDefaultValueAsExpr()};
 		("ParaSeq1 = " + ParaSeq1).println();
@@ -2475,7 +2482,7 @@ operation varMemory(stm: RC!Context): Z!ActionPara{
 		while(vars.size()>0){
 			("line 1627, v = " + vars.at(0) + ", type.type.NAME = " + vars.at(0).type.type.name  + ", v.type.type()" + vars.at(0).type.type()).println();
 		
-			var action_name = "Memory_"+ vars.at(0).name;
+			var action_name = "Memory_"+ vars.at(0).name + "_" + stm.FQN();
 			var ParaSeq = Sequence{vars.at(0).getInitialOrDefaultValueAsExpr()};
 			var action = action_name.createCallAction(ParaSeq);
 		
@@ -2504,7 +2511,7 @@ operation RC!Variable getInitialOrDefaultValueAsExpr(): Z!Expr{
 
 
 //Rule 33, follows the same pattern as Rule 31
-
+// TO DO: is fully qualified name needed for shared var? what is the FQN for shared var?
 
 operation sharedVarMemory(stm: RC!Context): Z!ActionPara{
 
@@ -2513,7 +2520,7 @@ operation sharedVarMemory(stm: RC!Context): Z!ActionPara{
 	
 	//to generate Individual shared variable memory as ActionPara for each variable in vars
 	for(v in vars){
-		("line 1566, v = " + v + ", v.type = " + v.type   +  ", v.type.type = " + v.type.type  + ", type.type.NAME = " + v.type.type.name  + ", v.type.type()= " + v.type.type()).println();
+//		("line 1566, v = " + v + ", v.type = " + v.type   +  ", v.type.type = " + v.type.type  + ", type.type.NAME = " + v.type.type.name  + ", v.type.type()= " + v.type.type()).println();
 		//,  type.ref.name =  + v.type.ref.name
 		sharedMemory(v);
 	}
@@ -2581,9 +2588,11 @@ operation sharedVarMemory(stm: RC!Context): Z!ActionPara{
 In fact, there is no need to have a ParamAction, because the parameter value is
 only assigned as initial or default, that is a one time thing, so it can be done directly in IndividualVarMemory. However, to be consistent with manual, the implementation still uses ParamAction.
 */
-operation Memory(v: RC!Variable): Z!ActionPara{
+operation Memory(v: RC!Variable,stm: RC!Context): Z!ActionPara{
 
-	return IndividualVarMemory(v).createActionPara("Memory_" + v.name);
+//	v_FQN is the fully qualified name of v
+	var v_FQN = v.name + "_" + stm.FQN();
+	return IndividualVarMemory(v,v_FQN).createActionPara("Memory_" + v_FQN);
 
 }
 
@@ -2610,22 +2619,23 @@ here we need ParamAction  */
  *it returns a ParamAction whose paramter is value of type RC!Expression
  *we do not create AcitonPara in this function because IndividualVarMemory is 
  *recursive, it makes code simple if we create ActionPara at the final step
- *i.e., in Rule 35*/
-operation IndividualVarMemory(v: RC!Variable): Z!ParamAction{
+ *i.e., in Rule 35
+ *v_FQN is the fully qualified name of v */
+operation IndividualVarMemory(v: RC!Variable, v_FQN: String): Z!ParamAction{
 	
 	
-	var commu1  = createOutputCommunicationFromString("get_" + v.name, "value", "OUTPUT");
+	var commu1  = createOutputCommunicationFromString("get_" + v_FQN, "value", "OUTPUT");
 	var choice1 = createPrefixingAction(
 						commu1, 
-						("Memory_"+v.name).createCallAction(Sequence{"value".createRefExpr(false, false)})
+						("Memory_"+ v_FQN).createCallAction(Sequence{"value".createRefExpr(false, false)})
 						); 
 	
 	
 	
-	var commu2  = createInputCommunication("set_" + v.name, "x__");
+	var commu2  = createInputCommunication("set_" + v_FQN, "x__");
 	var choice2 = createPrefixingAction(
 						commu2, 
-						("Memory_"+v.name).createCallAction(Sequence{"x__".createRefExpr(false, false)})
+						("Memory_"+ v_FQN).createCallAction(Sequence{"x__".createRefExpr(false, false)})
 						);  
 	
 	var choice3 = createPrefixingAction(createSynchCommunication("terminate"), createSkipAction());
@@ -2638,9 +2648,9 @@ operation IndividualVarMemory(v: RC!Variable): Z!ParamAction{
 	
 	var value = new RC!Variable;
 	value.name = "value";
-	("line 1745,  v.type = " + v.type).println();
-	("line 1746,  v.type.type() = " + v.type.type()).println();
-	("line 1738,  v.type.type = " + v.type.type).println();
+//	("line 1745,  v.type = " + v.type).println();
+//	("line 1746,  v.type.type() = " + v.type.type()).println();
+//	("line 1738,  v.type.type = " + v.type.type).println();
 //	("line 1739,  v.type.ref = " + v.type.ref).println();
 	value.type = clone(v.type);
 //	param.type.ref = clone(v.type.ref);
@@ -4050,7 +4060,7 @@ operation ncCoreBehaviour(nc: RC!NodeContainer): Z!ActionPara{
 	
 	
 	//Rename composeNodes(nc.nodes) with tidsR(nc)
-	var composedNodeActionTidsRenamed = composeNodes(nc.nodes).name.word.createCallAction().createRenameAction(tidsR_pairL, tidsR_pairR);
+	var composedNodeActionTidsRenamed = composeNodes(nc.nodes,nc).name.word.createCallAction().createRenameAction(tidsR_pairL, tidsR_pairR);
 
 	
 	//create transition action: Q
@@ -4794,13 +4804,13 @@ operation usedVariablesInExpr(expr:RC!Expression, container: Any): Set<String>{
 
 
 //CSP Rule 52
-operation composeNodes(nodes: Set<Node>): Z!ActionPara{
+operation composeNodes(nodes: Set<Node>, nc: RC!NodeContainer): Z!ActionPara{
 	
 //	var procForComposeNodes;
 	var composeNodesAction;
 	if(nodes.size()=0){//SStop /\ terminate -> Skip, this is an action
 		composeNodesAction = createAction2("InterruptAction", "SSTOP".createCallAction(), createPrefixingAction(createSynchCommunication("terminate"), createSkipAction()));
-		return composeNodesAction.createActionPara("composeNodes");
+		return composeNodesAction.createActionPara("composeNodes_"+nc.FQN());
 //		var actionParaSeq = new Sequence<Z!ActionPara>;
 //		actionParaSeq = Sequence{action.createActionPara("action")};
 //		procForComposeNodes = actionParaSeq.createBasicProcess("action");
@@ -4863,7 +4873,7 @@ operation composeNodes(nodes: Set<Node>): Z!ActionPara{
 
 		}
 		
-		return composeNodesAction.createActionPara("composeNodes");
+		return composeNodesAction.createActionPara("composeNodes_"+nc.FQN());
 	}
 		
 }

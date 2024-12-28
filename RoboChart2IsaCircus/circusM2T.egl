@@ -457,12 +457,29 @@ end
 }%]  
 
 
-[*used in parseCallAction, e.g., the CallAciton is HiddenLayer(1,2,3), then parseCallAction returns "1,2,3" *]
+[*used in parseCallAction, e.g., the CallAciton is HiddenLayer(1,2,3), then parseZExprList returns "1,2,3" *]
 [%operation Z!ZExprList parseZExprList(): String{
 	var list_str : String;
 
 	for(expr in self.exprs){
-		list_str = list_str + expr.parseExpr();
+	
+//	TO DO: HOW CAN exprs contain a VARDECL??
+//  VarDecl is not an Expr, so can not be covered by the else clause below (parseExpr() is not the method for type VarDecl)
+		if(expr.isTypeOf(Z!VarDecl)){
+			
+			for(vname in expr.nameList.names){
+				list_str = list_str + vname.parse();
+				if(hasMore){
+					list_str = list_str + ",";
+				}
+			}
+		}
+		
+//		("expr.isTypeOf(Z!VarDecl) = " + expr.isTypeOf(Z!VarDecl)).println();
+		else {
+			list_str = list_str + expr.parseExpr();
+		}
+		
 		if (hasMore){
 			list_str = list_str + ",";
 		}
@@ -576,6 +593,7 @@ end
 	if(self.isTypeOf(Z!SetExpr)){
 		return self.parseSetExpr();
 	}
+	
 }%]
 
 
