@@ -1,8 +1,8 @@
 # RoboChart to IsaCircus Transformation
 
 ## This project contains the implementation of the transformation from RoboChart to IsaCircus. It has two steps:
-### RoboChart to Circus by model-to-model transformation
-### Circus to IsaCircus by model-to-text transformation
+RoboChart to Circus by model-to-model transformation
+Circus to IsaCircus by model-to-text transformation
 
 ## Environment setup
 ### Installation of Epsilon 2.4 through Eclipse installer
